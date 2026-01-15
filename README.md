@@ -99,6 +99,9 @@ Edita el archivo `.env` con tu configuración:
 # Database Configuration
 DATABASE_URL="postgresql://promomanager_dev:promomanager_dev@localhost:5432/promomanager_dev?schema=public"
 
+# Redis Configuration
+REDIS_URL="redis://:promomanager_redis_dev@localhost:6379"
+
 # Connection Pool Configuration
 DATABASE_POOL_MIN=2
 DATABASE_POOL_MAX=10
@@ -167,6 +170,9 @@ docker-compose -f docker/docker-compose.dev.yaml down
 
 # Detener y eliminar volúmenes (para limpiar todo)
 docker-compose -f docker/docker-compose.dev.yaml down -v
+
+# Iniciar Redis
+docker-compose -f docker/docker-compose.dev.yaml up -d redis
 ```
 
 ### Opción B: Instalar PostgreSQL Localmente

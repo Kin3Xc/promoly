@@ -1,0 +1,87 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  name                String?
+  password            String?
+  avatar              String?
+  phone               String?
+  company             String?
+  emailPreferences    String?   @db.Text
+  resetToken          String?   @unique
+  resetTokenExpiry    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  stores              Store[]
+}
+
+model Store {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  platform  String
+  config    String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  promotions Promotion[]
+}
+
+model Promotion {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?  @db.Text
+  type           String
+  
+  // Targeting rules - Store as JSON in PostgreSQL
+  targetRules    String   @db.Text
+  discountType   String
+  discountValue  Float
+  
+  // Dates
+  startDate      DateTime
+  endDate        DateTime?
+  
+  // Status
+  isActive       Boolean  @default(true)
+  priority       Int      @default(0)
+  
+  // Metrics
+  totalViews     Int      @default(0)
+  totalClicks    Int      @default(0)
+  totalRedemptions Int     @default(0)
+  totalRevenue   Float    @default(0)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  metrics        PromotionMetric[]
+}
+
+model PromotionMetric {
+  id           String   @id @default(cuid())
+  promotionId  String
+  promotion    Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  
+  date         DateTime
+  views        Int      @default(0)
+  clicks       Int      @default(0)
+  redemptions  Int      @default(0)
+  revenue      Float    @default(0)
+  
+  createdAt    DateTime @default(now())
+}

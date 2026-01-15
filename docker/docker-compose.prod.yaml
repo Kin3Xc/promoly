@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: promomanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: promomanager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_backup:/backups
+    networks:
+      - promomanager_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '2G'
+          pids: 1
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready", "pg_isready"]
+          interval: 30s
+          timeout: 10s
+          start_period: 40s
+          restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+
+  # API Server
+  promomanager_api:
+    build: .
+    container_name: api_prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres:${POSTGRES_PASSWORD}@postgres_prod:5432/promomanager?schema=public"
+      NODE_ENV: production
+      PORT:  3001
+      # CORS y Rate Limiting
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      RATE_LIMIT_PER_MIN: 10
+      RATE_LIMIT_PER_HOUR: 1000
+      # Performance Tuning
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      WORKERS: "4"
+      NEXT_TELEMETRY_ENABLED: "1"
+      NEXT_TELEMETRY_WEBSITE_ID: ${NEXT_TELEMETRY_WEBSITE_ID}
+    ports:
+      - "3001:3001"
+    networks:
+      - promomanager_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '2G'
+          pids: 1
+        restart: always
+      healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+  postgres_backup:
+    external:
+      name: postgres_backup
+
+networks:
+  promomanager_network:
+    driver: bridge

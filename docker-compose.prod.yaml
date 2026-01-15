@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: promomanager_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: promomanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: promomanager
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:/var/lib/postgresql/data
+    networks:
+      - promomanager_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+          pids: 1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "pg_isready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  promomanager_api:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.promomanager-api
+      cache_from: promomanager_api:latest
+    deploy:
+      replicas: 2
+      restart: always
+      environment:
+        DATABASE_URL: postgresql://postgres:postgres:5432/promomanager?schema=public
+        NODE_ENV: production
+        PORT: 3001
+      environment:
+          VTEX_ACCOUNT_NAME: ${VTEX_ACCOUNT_NAME}
+          VTEX_APP_KEY: ${VTEX_APP_KEY}
+          VTEX_APP_TOKEN: ${VTEX_APP_TOKEN}
+          VTEX_ENVIRONMENT: ${VTEX_ENVIRONMENT}
+      env_file: .env.production
+      depends_on:
+        postgres:
+          condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+      deploy:
+        resources:
+          limits:
+            cpus: '1.0'
+            memory: 256M
+      healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 20s
+      timeout:  10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+
+networks:
+  promomanager_network:
+    driver: bridge

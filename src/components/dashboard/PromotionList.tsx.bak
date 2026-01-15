@@ -1,0 +1,624 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Edit2, 
+  Trash2, 
+  Eye, 
+  MoreVertical,
+  Calendar,
+  TrendingUp,
+  DollarSign,
+  MousePointer,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Search,
+  X,
+  Filter,
+  SlidersHorizontal
+} from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useToast } from '@/hooks/use-toast'
+import type { Promotion } from '@/types/promotion'
+
+interface PromotionListProps {
+  promotions: Promotion[]
+  onEdit: (promotion: Promotion) => void
+  onRefresh: () => void
+}
+
+const ITEMS_PER_PAGE = 6
+
+type FilterStatus = 'all' | 'active' | 'inactive' | 'scheduled' | 'expired'
+type FilterType = 'all' | 'behavior-based' | 'history-based' | 'cart-abandonment' | 'first-purchase'
+type FilterDiscount = 'all' | 'percentage' | 'fixed' | 'free-shipping'
+
+export function PromotionList({ promotions, onEdit, onRefresh }: PromotionListProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [promotionToDelete, setPromotionToDelete] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
+  const [filterType, setFilterType] = useState<FilterType>('all')
+  const [filterDiscount, setFilterDiscount] = useState<FilterDiscount>('all')
+  const { toast } = useToast()
+
+  // Filter promotions
+  const filteredPromotions = useMemo(() => {
+    return promotions.filter(promotion => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        const matchesName = promotion.name.toLowerCase().includes(query)
+        const matchesDescription = promotion.description?.toLowerCase().includes(query)
+        if (!matchesName && !matchesDescription) return false
+      }
+
+      // Status filter
+      if (filterStatus !== 'all') {
+        const now = new Date()
+        const startDate = new Date(promotion.startDate)
+        const endDate = promotion.endDate ? new Date(promotion.endDate) : null
+
+        switch (filterStatus) {
+          case 'active':
+            if (!promotion.isActive || startDate > now || (endDate && endDate < now)) return false
+            break
+          case 'inactive':
+            if (promotion.isActive) return false
+            break
+          case 'scheduled':
+            if (!promotion.isActive || startDate <= now) return false
+            break
+          case 'expired':
+            if (!promotion.isActive || !endDate || endDate >= now) return false
+            break
+        }
+      }
+
+      // Type filter
+      if (filterType !== 'all') {
+        if (promotion.type !== filterType) return false
+      }
+
+      // Discount type filter
+      if (filterDiscount !== 'all') {
+        if (promotion.discountType !== filterDiscount) return false
+      }
+
+      return true
+    })
+  }, [promotions, searchQuery, filterStatus, filterType, filterDiscount])
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const currentPromotions = useMemo(() => {
+    return filteredPromotions.slice(startIndex, endIndex)
+  }, [filteredPromotions, startIndex, endIndex])
+
+  // Reset to page 1 when filters change
+  useState(() => {
+    setCurrentPage(1)
+  })
+
+  const handleDelete = async (id: string) => {
+    setPromotionToDelete(id)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!promotionToDelete) return
+
+    try {
+      const response = await fetch(`/api/promotions/${promotionToDelete}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete promotion')
+      }
+
+      toast({
+        title: 'Promocion eliminada',
+        description: 'La promocion ha sido eliminada exitosamente.'
+      })
+
+      onRefresh()
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar la promocion',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeleteDialogOpen(false)
+      setPromotionToDelete(null)
+    }
+  }
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      goToPage(currentPage - 1)
+    }
+  }
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      goToPage(currentPage + 1)
+    }
+  }
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setFilterStatus('all')
+    setFilterType('all')
+    setFilterDiscount('all')
+    setCurrentPage(1)
+  }
+
+  const hasActiveFilters = searchQuery || filterStatus !== 'all' || filterType !== 'all' || filterDiscount !== 'all'
+
+  const getStatusBadge = (promotion: Promotion) => {
+    const now = new Date()
+    const startDate = new Date(promotion.startDate)
+    const endDate = promotion.endDate ? new Date(promotion.endDate) : null
+
+    if (!promotion.isActive) {
+      return <Badge variant="secondary">Inactiva</Badge>
+    }
+
+    if (startDate > now) {
+      return <Badge variant="outline">Programada</Badge>
+    }
+
+    if (endDate && endDate < now) {
+      return <Badge variant="secondary">Expirada</Badge>
+    }
+
+    return <Badge className="bg-green-500 hover:bg-green-600">Activa</Badge>
+  }
+
+  const getTypeLabel = (type: string) => {
+    const labels = {
+      'behavior-based': 'Comportamiento',
+      'history-based': 'Historial',
+      'cart-abandonment': 'Carrito',
+      'first-purchase': 'Primera Compra'
+    }
+    return labels[type as keyof typeof labels] || type
+  }
+
+  if (promotions.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-16">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', duration: 0.5 }}
+          >
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+              <Edit2 className="w-10 h-10 text-slate-400" />
+            </div>
+          </motion.div>
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">
+            Sin promociones
+          </h3>
+          <p className="text-slate-600 text-center max-w-md mb-6">
+            Crea tu primera promocion para empezar a ver resultados en tus ventas.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">Promociones</h2>
+            <p className="text-slate-600">
+              {filteredPromotions.length === promotions.length 
+                ? `Total: ${promotions.length} promociones`
+                : `Mostrando ${filteredPromotions.length} de ${promotions.length} promociones`
+              }
+            </p>
+          </div>
+          
+          {/* Clear filters button */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="text-slate-600 hover:text-slate-900"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Search and Filters */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Input
+                placeholder="Buscar por nombre o descripcion..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-11"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Filter toggles */}
+            <div className="flex flex-wrap gap-2">
+              {/* Status filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant={filterStatus !== 'all' ? 'default' : 'outline'} className="h-11">
+                    <SlidersHorizontal className="w-4 h-4 mr-2" />
+                    Estado: {filterStatus === 'all' ? 'Todos' : filterStatus}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onClick={() => setFilterStatus('all')}>
+                    Todos los estados
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus('active')}>
+                    Activas
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus('inactive')}>
+                    Inactivas
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus('scheduled')}>
+                    Programadas
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus('expired')}>
+                    Expiradas
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Type filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant={filterType !== 'all' ? 'default' : 'outline'} className="h-11">
+                    <Filter className="w-4 h-4 mr-2" />
+                    Tipo: {filterType === 'all' ? 'Todos' : getTypeLabel(filterType)}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onClick={() => setFilterType('all')}>
+                    Todos los tipos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterType('behavior-based')}>
+                    Comportamiento
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterType('history-based')}>
+                    Historial
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterType('cart-abandonment')}>
+                    Carrito
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterType('first-purchase')}>
+                    Primera compra
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Discount type filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant={filterDiscount !== 'all' ? 'default' : 'outline'} className="h-11">
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Descuento: {filterDiscount === 'all' ? 'Todos' : 
+                      filterDiscount === 'percentage' ? '%' : 
+                      filterDiscount === 'free-shipping' ? 'Envio gratis' : '$'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onClick={() => setFilterDiscount('all')}>
+                    Todos los descuentos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterDiscount('percentage')}>
+                    Porcentaje (%)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterDiscount('fixed')}>
+                    Monto fijo ($)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterDiscount('free-shipping')}>
+                    Envio gratis
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </CardContent>
+        </Card>
+
+      {/* Results */}
+      {filteredPromotions.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Search className="w-16 h-16 text-slate-300 mb-4" />
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">
+              No se encontraron promociones
+            </h3>
+            <p className="text-slate-600 text-center max-w-md mb-6">
+              {hasActiveFilters 
+                ? 'Intenta con otros filtros o limpia los filtros actuales.'
+                : 'Crea tu primera promocion para empezar.'
+              }
+            </p>
+            {hasActiveFilters && (
+              <Button onClick={clearFilters} variant="outline">
+                Limpiar filtros
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-4">
+            <AnimatePresence mode="wait">
+              {currentPromotions.map((promotion, index) => (
+                <motion.div
+                  key={promotion.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Card className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-semibold text-slate-900">
+                              {promotion.name}
+                            </h3>
+                            {getStatusBadge(promotion)}
+                          </div>
+                          {promotion.description && (
+                            <p className="text-sm text-slate-600 mb-2">
+                              {promotion.description}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-4 text-sm text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-4 h-4" />
+                              {new Date(promotion.startDate).toLocaleDateString('es-ES')}
+                              {promotion.endDate && ` - ${new Date(promotion.endDate).toLocaleDateString('es-ES')}`}
+                            </span>
+                            <Badge variant="outline" className="font-normal">
+                              {getTypeLabel(promotion.type)}
+                            </Badge>
+                            <Badge variant="outline" className="font-normal">
+                              {promotion.discountType === 'percentage' ? `${promotion.discountValue}%` : 
+                                promotion.discountType === 'free-shipping' ? 'Envio gratis' : `$${promotion.discountValue}`}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(promotion)}>
+                              <Edit2 className="w-4 h-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDelete(promotion.id)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Metrics */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Eye className="w-4 h-4 text-slate-500" />
+                          <div>
+                            <p className="text-xs text-slate-500">Vistas</p>
+                            <p className="font-semibold text-slate-900">{promotion.totalViews.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MousePointer className="w-4 h-4 text-slate-500" />
+                          <div>
+                            <p className="text-xs text-slate-500">Clics</p>
+                            <p className="font-semibold text-slate-900">{promotion.totalClicks.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-slate-500" />
+                          <div>
+                            <p className="text-xs text-slate-500">Redenciones</p>
+                            <p className="font-semibold text-slate-900">{promotion.totalRedemptions.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-slate-500" />
+                          <div>
+                            <p className="text-xs text-slate-500">Ingresos</p>
+                            <p className="font-semibold text-slate-900">
+                              ${promotion.totalRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg"
+            >
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => goToPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-sm text-slate-600 px-2">
+                  Pagina {currentPage} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => goToPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Page numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => goToPage(pageNum)}
+                      className={currentPage === pageNum ? "bg-slate-900 hover:bg-slate-800" : ""}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+                {totalPages > 5 && currentPage < totalPages - 2 && (
+                  <>
+                    <span className="text-slate-400">...</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(totalPages)}
+                    >
+                      {totalPages}
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {/* Items per page info */}
+              <div className="text-sm text-slate-500">
+                {ITEMS_PER_PAGE} por pagina
+              </div>
+            </motion.div>
+          )}
+        </>
+      )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar promocion?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion no se puede deshacer. La promocion sera eliminada permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
